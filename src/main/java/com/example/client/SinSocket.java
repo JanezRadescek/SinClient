@@ -1,7 +1,6 @@
 package com.example.client;
 
 import com.example.client.dtos.Msg;
-import com.example.client.dtos.MsgType;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.quarkus.logging.Log;
@@ -14,7 +13,9 @@ import jakarta.websocket.WebSocketContainer;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 
 import java.net.URI;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
 @ClientEndpoint
@@ -31,8 +32,7 @@ public class SinSocket {
     private ObjectMapper objectMapper = new ObjectMapper();
     private CountDownLatch resultLatch;
     private CountDownLatch sessionLatch;
-    private Msg resultMsg;
-
+    private BlockingQueue<Msg> messageQueue = new LinkedBlockingQueue<>();
 
     public void sendMessage(Msg msg) throws InterruptedException, JsonProcessingException {
         String message = objectMapper.writeValueAsString(msg);
@@ -41,7 +41,11 @@ public class SinSocket {
 
     public Msg waitForMsg(int resultTimeout) throws InterruptedException {
         resultLatch = new CountDownLatch(1);
-        resultLatch.await(resultTimeout, TimeUnit.SECONDS);
+        Msg resultMsg = messageQueue.poll();
+        if (resultMsg == null && resultLatch.await(resultTimeout, TimeUnit.SECONDS)) {
+                resultMsg = messageQueue.poll();
+            }
+
         return resultMsg;
     }
 
@@ -50,7 +54,7 @@ public class SinSocket {
             WebSocketContainer container = ContainerProvider.getWebSocketContainer();
             container.connectToServer(this, new URI(uri));
         } catch (Exception e) {
-            e.printStackTrace();
+            Log.error("Error connecting to WebSocket", e);
         }
     }
 
@@ -68,8 +72,8 @@ public class SinSocket {
         Log.info("Received message: " + message);
         try {
             Msg msg = objectMapper.readValue(message, Msg.class);
+            messageQueue.add(msg);
             if (resultLatch != null) {
-                resultMsg = msg;
                 resultLatch.countDown();
             }
         } catch (JsonProcessingException e) {
@@ -81,7 +85,9 @@ public class SinSocket {
         if (session == null || !session.isOpen()) {
             sessionLatch = new CountDownLatch(1);
             connect(url);
-            sessionLatch.await(connectTimeout, TimeUnit.SECONDS);
+            if(!sessionLatch.await(connectTimeout, TimeUnit.SECONDS)) {
+                throw new RuntimeException("Timeout connecting to WebSocket");
+            }
         }
         session.getAsyncRemote().sendText(message);
     }
