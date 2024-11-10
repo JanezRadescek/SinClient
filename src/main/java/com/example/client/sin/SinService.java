@@ -1,5 +1,6 @@
-package com.example.client;
+package com.example.client.sin;
 
+import com.example.client.CustomExcpetion;
 import com.example.client.dtos.Msg;
 import com.example.client.dtos.MsgType;
 import com.example.client.dtos.Task;
@@ -16,13 +17,16 @@ import java.util.Random;
 import java.util.UUID;
 
 @ApplicationScoped
-public class SinClient {
+public class SinService {
 
     @Inject
     SinSocket sinSocket;
 
     @RestClient
     StrategyClient strategyClient;
+
+    @RestClient
+    SinClient sinClient;
 
     @RestClient
     IdClient idClient;
@@ -33,65 +37,67 @@ public class SinClient {
     @ConfigProperty(name = "result.timeout", defaultValue = "10") // max 20 steps * 300ms = 6s. 4s extra
     int resultTimeout;
 
+    @ConfigProperty(name = "max.sleep", defaultValue = "1000")
+    int defaultMaxSleep;
+
     Random random = new Random();
 
     UUID clientId;
 
     public void start() {
 
-        clientId = getClientId();
+        tryWithExponential(this::getClientId, 10 * defaultMaxSleep);
+
+        tryWithExponential(this::getActiveTasks, defaultMaxSleep);
 
         while (true) {
-            try {
-                calculateSin();
-            } catch (Exception e) {
-                Log.error("Error while calculating sin, restarting", e);
-                try {
-                    Thread.sleep(1000);
-                } catch (InterruptedException ex) {
-                    Log.error("Interrupted while waiting for restart", ex);
-                }
-            }
-
+            tryWithExponential(this::calculateSin, defaultMaxSleep);
         }
     }
 
-    private UUID getClientId() {
-        var sleepTime = 500;
-        while (true) {
-            try {
-                return idClient.getClientId();
-            } catch (Exception e) {
-                Log.errorf("Sin server not responding. Sleeping for '%d'. Reason: %s", sleepTime, e.getMessage());
-                try {
-                    Thread.sleep(sleepTime);
-                    sleepTime *= 2;
-                } catch (InterruptedException interruptedException) {
-                    Log.error("Interrupted while waiting for server", interruptedException);
-                }
-            }
-        }
+    private void getClientId() {
+        clientId = idClient.getClientId();
     }
 
-    private void calculateSin() {
+    private void getActiveTasks() {
+        var activeTasks = sinClient.getActiveTasks();
+        Log.info("Active tasks: " + activeTasks);
+    }
+
+    private void calculateSin() throws InterruptedException, JsonProcessingException {
 
         var strategy = strategyClient.getFairStrategy();
         Log.info("Received fair strategy: " + strategy);
 
         var msg = createInitialMsg();
         Log.info("Sending msg: " + msg);
-        try {
-            sinSocket.sendMessage(msg);
 
-            switch (strategy) {
-                case FINISH -> finishStrategy(msg.id());
-                case ANNOYING -> annoyingStrategy(msg.id());
-                case IMPATIENT -> randomStrategy(msg.id());
+        sinSocket.sendMessage(msg);
+
+        switch (strategy) {
+            case FINISH -> finishStrategy(msg.id());
+            case ANNOYING -> annoyingStrategy(msg.id());
+            case IMPATIENT -> randomStrategy(msg.id());
+        }
+
+    }
+
+    private void tryWithExponential(ThrowableRunnable runnable, int maxSleep) {
+        var sleepTime = 500;
+        while (true) {
+            sleepTime = Math.min(sleepTime, maxSleep);
+            try {
+                runnable.run();
+                return;
+            } catch (Exception e) {
+                Log.errorf("Unexpected error. Sleeping for '%d'. Reason: %s", sleepTime, e.getMessage());
+                try {
+                    Thread.sleep(sleepTime);
+                    sleepTime *= 2;
+                } catch (InterruptedException ex) {
+                    Log.error("Interrupted while waiting for server", ex);
+                }
             }
-        } catch (InterruptedException e) {
-            Log.error("Interrupted while waiting for RESULT message", e);
-        } catch (JsonProcessingException e) {
-            Log.error("Error while sending message", e);
         }
     }
 
@@ -131,7 +137,7 @@ public class SinClient {
 
     private boolean handleResponse(String id, long start) throws InterruptedException {
         if (System.currentTimeMillis() - start >= resultTimeout) {
-            throw new RuntimeException("Timeout waiting for result.");
+            throw new CustomExcpetion("Timeout waiting for result.");
         }
         Msg msg = sinSocket.waitForMsg(nextMsgTimeout);
         if (msg == null || !msg.id().equals(id)) {

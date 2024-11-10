@@ -1,5 +1,6 @@
-package com.example.client;
+package com.example.client.sin;
 
+import com.example.client.CustomExcpetion;
 import com.example.client.dtos.Msg;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -46,7 +47,7 @@ public class SinSocket {
             if (resultLatch.await(resultTimeout, TimeUnit.SECONDS)) {
                 resultMsg = messageQueue.poll();
             } else {
-                throw new RuntimeException("Timeout waiting for response from server");
+                throw new CustomExcpetion("Timeout waiting for response from server");
             }
         }
 
@@ -90,7 +91,7 @@ public class SinSocket {
             sessionLatch = new CountDownLatch(1);
             connect(url);
             if (!sessionLatch.await(connectTimeout, TimeUnit.SECONDS)) {
-                throw new RuntimeException("Timeout connecting to WebSocket");
+                throw new CustomExcpetion("Timeout connecting to WebSocket");
             }
         }
         session.getAsyncRemote().sendText(message);
