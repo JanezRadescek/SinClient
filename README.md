@@ -8,4 +8,8 @@ The application can be packaged using:
 ./mvnw package
 ```
 
-The application is now runnable using `java -jar target/quarkus-app/quarkus-run.jar`.
+The application is now runnable using:
+
+```shell script
+java -jar ./target/quarkus-app/quarkus-run.jar
+```

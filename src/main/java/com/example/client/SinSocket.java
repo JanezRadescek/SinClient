@@ -42,9 +42,13 @@ public class SinSocket {
     public Msg waitForMsg(int resultTimeout) throws InterruptedException {
         resultLatch = new CountDownLatch(1);
         Msg resultMsg = messageQueue.poll();
-        if (resultMsg == null && resultLatch.await(resultTimeout, TimeUnit.SECONDS)) {
+        if (resultMsg == null) {
+            if (resultLatch.await(resultTimeout, TimeUnit.SECONDS)) {
                 resultMsg = messageQueue.poll();
+            } else {
+                throw new RuntimeException("Timeout waiting for response from server");
             }
+        }
 
         return resultMsg;
     }
@@ -85,7 +89,7 @@ public class SinSocket {
         if (session == null || !session.isOpen()) {
             sessionLatch = new CountDownLatch(1);
             connect(url);
-            if(!sessionLatch.await(connectTimeout, TimeUnit.SECONDS)) {
+            if (!sessionLatch.await(connectTimeout, TimeUnit.SECONDS)) {
                 throw new RuntimeException("Timeout connecting to WebSocket");
             }
         }

@@ -27,7 +27,10 @@ public class SinClient {
     @RestClient
     IdClient idClient;
 
-    @ConfigProperty(name = "result.timeout", defaultValue = "5")
+    @ConfigProperty(name = "msg.timeout", defaultValue = "5")
+    int nextMsgTimeout;
+
+    @ConfigProperty(name = "result.timeout", defaultValue = "10") // max 20 steps * 300ms = 6s. 4s extra
     int resultTimeout;
 
     Random random = new Random();
@@ -39,7 +42,17 @@ public class SinClient {
         clientId = getClientId();
 
         while (true) {
-            calculateSin();
+            try {
+                calculateSin();
+            } catch (Exception e) {
+                Log.error("Error while calculating sin, restarting", e);
+                try {
+                    Thread.sleep(1000);
+                } catch (InterruptedException ex) {
+                    Log.error("Interrupted while waiting for restart", ex);
+                }
+            }
+
         }
     }
 
@@ -84,12 +97,9 @@ public class SinClient {
 
     private void finishStrategy(String id) throws InterruptedException {
         while (true) {
-            Msg resultMsg = sinSocket.waitForMsg(resultTimeout);
-            if (resultMsg != null && resultMsg.id().equals(id)) {
-                var finished = handleOurTask(resultMsg);
-                if (finished) {
-                    return;
-                }
+            var finished = handleResponse(id, System.currentTimeMillis());
+            if (finished) {
+                return;
             }
         }
     }
@@ -97,12 +107,9 @@ public class SinClient {
     private void annoyingStrategy(String id) throws InterruptedException, JsonProcessingException {
         sinSocket.sendMessage(new Msg(MsgType.CANCEL, id, null, null));
         while (true) {
-            Msg resultMsg = sinSocket.waitForMsg(resultTimeout);
-            if (resultMsg != null && resultMsg.id().equals(id)) {
-                var finished = handleOurTask(resultMsg);
-                if (finished) {
-                    return;
-                }
+            var finished = handleResponse(id, System.currentTimeMillis());
+            if (finished) {
+                return;
             }
         }
     }
@@ -110,12 +117,9 @@ public class SinClient {
     private void randomStrategy(String id) throws InterruptedException, JsonProcessingException {
         var canceled = false;
         while (true) {
-            Msg resultMsg = sinSocket.waitForMsg(resultTimeout);
-            if (resultMsg != null && resultMsg.id().equals(id)) {
-                var finished = handleOurTask(resultMsg);
-                if (finished) {
-                    return;
-                }
+            var finished = handleResponse(id, System.currentTimeMillis());
+            if (finished) {
+                return;
             }
             if (!canceled && random.nextDouble() > 0.59) {
                 Log.info("Canceling task");
@@ -125,7 +129,14 @@ public class SinClient {
         }
     }
 
-    private boolean handleOurTask(Msg msg) {
+    private boolean handleResponse(String id, long start) throws InterruptedException {
+        if (System.currentTimeMillis() - start >= resultTimeout) {
+            throw new RuntimeException("Timeout waiting for result.");
+        }
+        Msg msg = sinSocket.waitForMsg(nextMsgTimeout);
+        if (msg == null || !msg.id().equals(id)) {
+            return false;
+        }
         if (msg.error() != null) {
             Log.info("Error in task");
             return true;
