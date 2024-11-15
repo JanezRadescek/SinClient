@@ -15,7 +15,7 @@ cmake --build build
 The application is now runnable using:
 
 ```shell script
-./build/SinClient
+./build/SinClient ws://localhost:8080/ws/sin
 ```
 
 ### Docker
@@ -29,7 +29,7 @@ docker build -t sinclient .
 To run the image:
 
 ```shell script
-docker run --network host sinclient
+docker run --network host sinclient ws://localhost:8080/ws/sin
 ```
 
 ## Java

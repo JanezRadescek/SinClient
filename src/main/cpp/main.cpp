@@ -1,14 +1,16 @@
-//
-// Created by janez on 15.11.2024.
-//
-
 #include <iostream>
-
+#include <string>
 #include "sin/SinService.h"
 
-int main()
+int main(int argc, char* argv[])
 {
-    std::cout << "Starting WebSocket client..." << std::endl;
-    run_client("ws://localhost:8080/ws/sin");
+    if (argc != 2) {
+        std::cerr << "Usage: " << argv[0] << " <uri>" << std::endl;
+        return 1;
+    }
+
+    std::string uri = argv[1];
+    std::cout << "Starting WebSocket client with URI: " << uri << std::endl;
+    run_client(uri);
     return 0;
 }
