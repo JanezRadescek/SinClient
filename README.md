@@ -34,6 +34,8 @@ docker run --network host sinclient ws://localhost:8080/ws/sin
 
 ## Java
 
+Java API is not compatible with the c++ API!
+
 The application can be packaged using:
 
 ```shell script
